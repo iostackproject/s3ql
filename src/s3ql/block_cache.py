@@ -14,6 +14,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from llfuse import lock, lock_released
 from queue import Queue, Empty as QueueEmpty, Full as QueueFull
+#from .filters import objectreadxform, objectwritexform, readxform, writexform
 import os
 import hashlib
 import shutil
@@ -148,7 +149,7 @@ class CacheEntry(object):
     """
 
     __slots__ = [ 'dirty', 'inode', 'blockno', 'last_access',
-                  'size', 'pos', 'fh', 'removed' ]
+                  'size', 'pos', 'fh', 'removed', 'filename' ]
 
     def __init__(self, inode, blockno, filename):
         super().__init__()
@@ -162,10 +163,13 @@ class CacheEntry(object):
         self.last_access = 0
         self.pos = 0
         self.size = os.fstat(self.fh.fileno()).st_size
+        self.filename = filename
 
     def read(self, size=None):
         buf = self.fh.read(size)
         self.pos += len(buf)
+        #log.debug('READ IN CACHE: %s %d %d %d',self.filename,self.fh, self.pos - len(buf), len(buf))
+        #buf = readxform(self.fh, buf, self.pos - len(buf), len(buf))
         return buf
 
     def flush(self):
@@ -189,6 +193,8 @@ class CacheEntry(object):
             self.size = size
 
     def write(self, buf):
+        #buf = writexform(self.fh, buf, self.pos, len(buf))
+        #log.debug('WRITE IN CACHE: %s %d %d %d',self.filename,self.fh, self.pos - len(buf), len(buf))
         self.dirty = True
         self.fh.write(buf)
         self.pos += len(buf)
@@ -766,7 +772,6 @@ class BlockCache(object):
                     el.seek(0)
                     el.truncate()
                     shutil.copyfileobj(fh, el, BUFSIZE)
-
                 with lock_released:
                     # Lock object. This ensures that we wait until the object
                     # is uploaded. We don't have to worry about deletion, because
