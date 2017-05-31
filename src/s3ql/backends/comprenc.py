@@ -22,6 +22,10 @@ import io
 import struct
 import time
 import zlib
+''' Filter Support '''
+import configparser
+import importlib
+import sys
 
 log = logging.getLogger(__name__)
 
@@ -162,7 +166,6 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
                 to_skip = meta_raw['payload_offset']
                 while to_skip:
                     to_skip -= len(fh.read(to_skip))
-
             encr_alg = meta_raw['encryption']
             if encr_alg == 'AES_v2':
                 fh = DecryptFilter(fh, data_key)
@@ -178,7 +181,7 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
                 fh = DecompressFilter(fh,zlib.decompressobj())
             elif compr_alg != 'None':
                 raise RuntimeError('Unsupported compression: %s' % compr_alg)
-
+            fh = InFilterOutStd(fh)	
             fh.metadata = meta
         except:
             # Don't emit checksum warning, caller hasn't even
@@ -231,6 +234,8 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
             fh = EncryptFilter(fh, data_key)
         if compr:
             fh = CompressFilter(fh, compr)
+	
+        fh = InStdOutFilter(fh)
 
         return fh
 
@@ -675,3 +680,153 @@ class ObjectNotEncrypted(Exception):
     '''
 
     pass
+
+
+class InStdOutFilter(object):
+    '''Filter data while writing'''
+
+
+    def readconf (self,conf = "/tmp/filters.ini"):
+        Config = configparser.ConfigParser()
+        Config.read(conf)
+        order = Config['ORDER']['Order'].split()
+        path = Config['ORDER']['Path']
+        sys.path.append(path)
+        filterparams = {}
+        filterlist = {}
+        for s_filter in order:
+            filterparams[s_filter] = Config[s_filter]['Param']
+            filterlist[s_filter] = importlib.import_module(s_filter)
+        return (order,filterlist,filterparams)
+
+    def inStandard_outFiltered(self,buf):
+        if (len(buf) == 0):
+           return None
+        reverse_order = reversed(self.order)
+        for i in reverse_order:
+            self.filterlist[i].init(self.filterparams[i])
+            buf=self.filterlist[i].writexform_c(self,buf,self.filterparams[i])
+        return buf
+
+    def __init__(self, fh):
+        '''Initialize
+
+        *fh* should be a file-like object. filter is the filter object.
+        '''
+        super().__init__()
+        (self.order, self.filterlist, self.filterparams) = self.readconf()
+           
+        self.fh = fh
+        self.obj_size = 0
+        self.closed = False
+        self.process = 'None'
+
+    def write(self, data):
+        '''Write *data*'''
+        buf = self.inStandard_outFiltered(data)
+        if buf:
+            self.fh.write(buf)
+            self.obj_size += len(buf)
+
+    def close(self):
+        # There may be errors when calling fh.close(), so we make sure that a
+        # repeated call is forwarded to fh.close(), even if we already cleaned
+        # up.
+        if not self.closed:
+           reverse_order = reversed(self.order)
+        for i in reverse_order:
+           self.filterlist[i].init(self.filterparams[i])
+           buf=self.filterlist[i].flush(self,self.filterparams[i])
+
+           if buf:
+              self.fh.write(buf)
+              self.obj_size += len(buf)
+           self.closed = True
+        self.closed = True
+        self.fh.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+        return False
+
+    def get_obj_size(self):
+        if not self.closed:
+            raise RuntimeError('Object must be closed first.')
+        return self.obj_size
+
+class InFilterOutStd(InputFilter):
+    '''UnFilter data while reading'''
+
+    def readconf (self,conf = "/tmp/filters.ini"):
+        Config = configparser.ConfigParser()
+        Config.read(conf)
+        order = Config['ORDER']['Order'].split()
+        path = Config['ORDER']['Path']
+        sys.path.append(path)
+        filterparams = {}
+        filterlist = {}
+        for s_filter in order:
+            filterparams[s_filter] = Config[s_filter]['Param']
+            filterlist[s_filter] = importlib.import_module(s_filter)
+        return (order,filterlist,filterparams)
+
+    def inFiltered_outStandard(self,buf):
+        if (len(buf) == 0):
+           return None
+        for i in self.order:
+            self.filterlist[i].init(self.filterparams[i])
+            buf=self.filterlist[i].readxform_c(self,buf,self.filterparams[i])
+        return buf
+
+    def __init__(self, fh, metadata=None):
+        '''Initialize
+
+        *fh* should be a file-like object and may be unbuffered. *decomp* should
+        be a fresh decompressor instance with a *decompress* method.
+        '''
+        super().__init__()
+        (self.order, self.filterlist, self.filterparams) = self.readconf()
+        self.fh = fh
+        self.metadata = metadata
+        self.previous = b''
+
+    def read(self, size=-1):
+        '''Read up to *size* bytes
+
+        This method is currently buggy and may also return *more* than *size*
+        bytes. Callers should be prepared to handle that. This is because some
+        of the used (de)compression modules don't support output limiting.
+        '''
+
+        if size == -1:
+            return self.readall()
+        elif size == 0:
+            return b''
+
+        buf = b''
+        while not buf:
+            buf = self.fh.read(size)
+            if not buf: return b''
+            try:
+                buf = self.inFiltered_outStandard(buf)
+            except CorruptedObjectError:
+                # Read rest of stream, so that we raise HMAC or MD5 error instead
+                # if problem is on lower layer
+                self.discard_input()
+                raise
+
+        return buf
+
+    def close(self, *a, **kw):
+        self.fh.close(*a, **kw)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+        return False
+

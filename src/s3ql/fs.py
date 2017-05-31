@@ -14,7 +14,7 @@ from .database import NoSuchRowError
 from .inode_cache import OutOfInodesError
 from io import BytesIO
 from llfuse import FUSEError
-from .filters import writexform, readxform
+#from .filters import writexform, readxform
 import collections
 import errno
 import llfuse
@@ -1043,7 +1043,7 @@ class Operations(llfuse.Operations):
         while length > 0:
         #    log.warning('READ %d %d %d %d',fh,inode, offset,length)
             tmp = self._readwrite(fh, offset, length=length)
-            tmp = readxform(fh, tmp, offset, length)
+            #tmp = readxform(fh, tmp, offset, length)
             buf.write(tmp)
             length -= len(tmp)
             offset += len(tmp)
@@ -1070,7 +1070,7 @@ class Operations(llfuse.Operations):
         total = len(buf)
         minsize = offset + total
         while buf:
-            buf = writexform(fh, buf,offset,len(buf))
+            #buf = writexform(fh, buf,offset,len(buf))
             written = self._readwrite(fh, offset, buf=buf)
             offset += written
             buf = buf[written:]
