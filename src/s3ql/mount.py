@@ -127,7 +127,7 @@ def main(args=None):
     # Retrieve metadata
     with backend_pool() as backend:
         (param, db) = get_metadata(backend, cachepath)
-
+        backend.db = db
     #if param['max_obj_size'] < options.min_obj_size:
     #    raise QuietError('Maximum object size must be bigger than minimum object size.',
     #                     exitcode=2)

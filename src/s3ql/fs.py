@@ -1063,7 +1063,6 @@ class Operations(llfuse.Operations):
         This method releases the global lock while it is running.
         '''
         #log.debug('started with %d, %d, datalen=%d', fh, offset, len(buf))
-
         if self.failsafe or self.inodes[fh].locked:
             raise FUSEError(errno.EPERM)
 

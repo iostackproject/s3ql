@@ -40,6 +40,7 @@ class Fsck(object):
 
         self.cachedir = cachedir_
         self.backend = backend_
+        self.backend.db = conn
         self.expect_errors = False
         self.found_errors = False
         self.uncorrectable_errors = False

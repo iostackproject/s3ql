@@ -166,6 +166,7 @@ def main(args=None):
     param['last-modified'] = time.time()
 
     log.info('Dumping metadata...')
+    backend.db = db
     dump_and_upload_metadata(backend, db, param)
     backend.store('s3ql_seq_no_%d' % param['seq_no'], b'Empty')
     with open(cachepath + '.params', 'wb') as fh:
