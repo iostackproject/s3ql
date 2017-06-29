@@ -9,7 +9,7 @@ This work can be distributed under the terms of the GNU GPLv3.
 from ..logging import logging # Ensure use of custom logger class
 from .. import BUFSIZE
 from .common import AbstractBackend, CorruptedObjectError, checksum_basic_mapping
-from ..common import ThawError, freeze_basic_mapping, thaw_basic_mapping
+from ..common import ThawError, freeze_basic_mapping, thaw_basic_mapping, get_path
 from ..inherit_docstrings import (copy_ancestor_docstring, prepend_ancestor_docstring,
                                   ABCDocstMeta)
 from Crypto.Cipher import AES
@@ -26,6 +26,11 @@ import zlib
 import configparser
 import importlib
 import sys
+from pprint import pprint
+import redis
+def print_r(the_object):
+    print ("CLASS: ", the_object.__class__.__name__, " (BASE CLASS: ", the_object.__class__.__bases__,")")
+    pprint(vars(the_object))
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +59,6 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
         self.passphrase = passphrase
         self.compression = compression
         self.backend = backend
-
         if (compression[0] not in ('bzip2', 'lzma', 'zlib', None)
             or compression[1] not in range(10)):
             raise ValueError('Unsupported compression: %s' % compression)
@@ -234,9 +238,11 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
             fh = EncryptFilter(fh, data_key)
         if compr:
             fh = CompressFilter(fh, compr)
-	
         fh = InStdOutFilter(fh)
-
+        try:
+           fh.db = self.db
+        except:
+           print("no Self db")
         return fh
 
     @copy_ancestor_docstring
@@ -689,14 +695,37 @@ class InStdOutFilter(object):
     def readconf (self,conf = "/tmp/filters.ini"):
         Config = configparser.ConfigParser()
         Config.read(conf)
-        order = Config['ORDER']['Order'].split()
-        path = Config['ORDER']['Path']
-        sys.path.append(path)
+
+        (redisip, redisport, rediskey) = Config['General']['Param'].split()
         filterparams = {}
         filterlist = {}
-        for s_filter in order:
-            filterparams[s_filter] = Config[s_filter]['Param']
-            filterlist[s_filter] = importlib.import_module(s_filter)
+
+        redis_host = str(redisip.lower())
+        redis_port = int(redisport)
+        print (redis_host, redis_port)
+        r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
+        conf = r.get(rediskey)
+        conf = conf.decode("utf-8").split(";")
+        for linea in conf:
+            filterc = linea.split(":")
+            if (filterc[0] == "ORDER"):
+               filterorder = filterc[1].split()
+               path = filterorder[1]
+               order = filterorder[0].split(",")
+               print ("ORDER ",order, path)
+               sys.path.append(path)
+
+        for linea in conf:
+            filterc = linea.split(":")
+            if (filterc[0] != "ORDER"):
+               name = filterc[0]
+               filterparams[name] = filterc[1]
+               code = r.get("client_filter_"+name+"_code")
+               open(path+name+".py", 'w').write(code.decode("UTF-8"))
+               importlib.invalidate_caches()
+               filterlist[name] = importlib.import_module(name)
+
+
         return (order,filterlist,filterparams)
 
     def inStandard_outFiltered(self,buf):
@@ -763,14 +792,36 @@ class InFilterOutStd(InputFilter):
     def readconf (self,conf = "/tmp/filters.ini"):
         Config = configparser.ConfigParser()
         Config.read(conf)
-        order = Config['ORDER']['Order'].split()
-        path = Config['ORDER']['Path']
-        sys.path.append(path)
+
+        (redisip, redisport, rediskey) = Config['General']['Param'].split()
         filterparams = {}
         filterlist = {}
-        for s_filter in order:
-            filterparams[s_filter] = Config[s_filter]['Param']
-            filterlist[s_filter] = importlib.import_module(s_filter)
+
+        redis_host = str(redisip.lower())
+        redis_port = int(redisport)
+        r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
+        conf = r.get(rediskey)
+        conf = conf.decode("utf-8").split(";")
+        for linea in conf:
+            filterc = linea.split(":")
+            if (filterc[0] == "ORDER"):
+               filterorder = filterc[1].split()
+               path = filterorder[1]
+               order = filterorder[0].split(",")
+               print ("ORDER ",filterorder, path)
+               sys.path.append(path)
+            
+            for linea in conf:
+               filterc = linea.split(":")
+               if (filterc[0] != "ORDER"):
+                  name = filterc[0]
+                  filterparams[name] = filterc[1]
+                  code = r.get("client_filter_"+name+"_code")
+                  open("/tmp/"+name+".py", 'w').write(code.decode("UTF-8"))
+                  importlib.invalidate_caches()
+                  filterlist[name] = importlib.import_module(name)
+
+
         return (order,filterlist,filterparams)
 
     def inFiltered_outStandard(self,buf):

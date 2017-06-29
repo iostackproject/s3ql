@@ -1,6 +1,5 @@
-# The filter calls and external process when a new object of the file is uploaded. 
-# The process will be called for each 10MB uploaded so the process should wait a reasonable time to allow s3ql to upload it.
-# paramters : redis host, redis port, extension key, process key
+# The filter adds additional metadata to files ( objects ) . 
+# paramters : redis host, redis port, (substring - metadata)*
 import redis
 import subprocess
 
@@ -23,15 +22,14 @@ def get_path(id_, conn):
     return name
 
 # HOST PORT KEY KEYCOMMAND
-# Gets from redis list of extensions (txt, c3d)..
+# Gets from redis pairs of substring#metadata tag.
 def get_redis(self, param):
     params = param.split()
     redis_host = str(params[0]).lower()
     redis_port =  int(params[1])
     r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
     files = r.get(params[2])
-    command = r.get(params[3])
-    return (files,command)
+    return files
 
 def flush(self,param):
     buf = None
@@ -44,17 +42,17 @@ def flush(self,param):
        id_ = get_path(int(self.fh.fh.key.split("_")[2]), self.db)
     except:
        return buf
-    (files,command) = get_redis(self,param)
+    
+    files = get_redis(self,param)
     files = files.decode("utf-8")
-    command = command.decode("utf-8")
-    args = command.split()
     fname = id_[0].decode("utf-8")
-    splitfname = fname.split(".")
-    extension = splitfname[len(splitfname)-1]
-    if extension in files.split():
-       print ("Found",splitfname)
-       args = args+[fname]
-       subprocess.call(args)
-   # except:
-    #   return buf
+    files = files.split()
+    ntag = 1
+    for i in files:
+        (nfile, tag) = i.split("#")
+        print (nfile, fname)
+        if nfile in fname:
+           print ("Found", fname)
+           self.fh.fh.headers['X-Object-meta-TAG'+str(ntag)] = tag
+           ntag = ntag + 1
     return buf

@@ -982,6 +982,7 @@ class Operations(llfuse.Operations):
             inode = self.inodes[id_]
 
         self.open_inodes[inode.id] += 1
+        self.fname = name # TODO
         return (inode.id, inode.entry_attributes())
 
     def _create(self, id_p, name, mode, ctx, rdev=0, size=0):

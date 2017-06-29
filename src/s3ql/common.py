@@ -30,7 +30,6 @@ import functools
 import contextlib
 
 log = logging.getLogger(__name__)
-
 file_system_encoding = sys.getfilesystemencoding()
 def path2bytes(s):
     return s.encode(file_system_encoding, 'surrogateescape')
@@ -333,7 +332,6 @@ def get_backend_factory(storage_url, backend_options, authfile,
     try:
         backend = backend_class(storage_url, backend_login, backend_passphrase,
                                 backend_options)
-
         # Do not use backend.lookup(), this would use a HEAD request and
         # not provide any useful error messages if something goes wrong
         # (e.g. wrong credentials)

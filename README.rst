@@ -3,6 +3,52 @@
   file is rendered by Bitbucket.
 
 ============
+ IOSTACK Changes
+============
+
+IOStack EU project has modified S3QL to allow dynamic filters at the client side.
+
+S3QL expects a /tmp/filters.ini file with the redis path and port and the key for the configuration file
+
+[General]
+Param : 127.0.0.1 6379 client_filter_configuration
+
+
+You can find an example of the file in the src/s3ql/filters.ini
+
+The expected redis content is the next:
+
+**Configuration**
+In the client_filter_configuration something like:
+"Filterqsub:127.0.0.1 6379 client_filter_qsub_extension client_filter_qsub_process;Filtertag:127.0.0.1 6379 client_filter_tag_list;Filter1:127.0.0.1 6379 client_filter_compression;Filter2:22;ORDER:Filtertag,Filter2 /tmp/"
+
+The format is "NameOfTheFilter:parameters"
+Each Filter is separated by a ;
+There is a special key "ORDER" that configures the stack and the path where the filters will be downloaded
+"ORDER: Filter1,Filter2,Filter3 <path>
+
+Finally we have for each filter the code in redis. You can find sample filters in the src/s3ql/ path. 
+In order to upload to redis to this:
+redis-cli -x SET client_filter_Filtertag_code < src/s3ql/Filtertag.py
+
+Individual Filters
+==================
+Some filters need configuration stored in redis:
+
+**filterqsub** 
+client_filter_qsub_extension "txt c3d" 
+client_filter_qsub_process "/tmp/process.sh"  
+
+**filtertag**
+client_filter_tag_list "file1.txt#SECRET file2#MORESECRET"
+Tags will be stored as Meta-Tag<index> in the metadata of each object (we look for partial matches, so a file can have multiple tags)
+
+**Filter1 or GZIP filter**
+client_filter_compression "on" or "off" to enable or disable compression.
+
+
+
+============
  About S3QL
 ============
 
