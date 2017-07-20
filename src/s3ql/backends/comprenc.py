@@ -157,6 +157,7 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
         fh = self.backend.open_read(key)
         try:
             meta_raw = fh.metadata
+            print (fh.metadata)
             (nonce, meta) = self._verify_meta(key, meta_raw)
             if nonce:
                 data_key = sha256(self.passphrase + nonce)
@@ -185,8 +186,8 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
                 fh = DecompressFilter(fh,zlib.decompressobj())
             elif compr_alg != 'None':
                 raise RuntimeError('Unsupported compression: %s' % compr_alg)
-            fh = InFilterOutStd(fh)	
-            fh.metadata = meta
+            fh = InFilterOutStd(fh)
+            fh.metadata = meta_raw
         except:
             # Don't emit checksum warning, caller hasn't even
             # started reading anything.

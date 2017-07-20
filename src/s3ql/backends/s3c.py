@@ -752,6 +752,16 @@ class Backend(AbstractBackend, metaclass=ABCDocstMeta):
             if part is None:
                 break
             parts.append(part)
+        #buf = unquote(''.join(parts))
+        #meta = literal_eval('{ %s }' % buf)
+        # Adding "Tag" meta        
+        metaTag = {}
+        for i in count():
+            data = resp.headers.get('%smeta-Tag%d' % (self.hdr_prefix,i+1), None)
+            if data is None:
+               break
+            metaTag['Tag'+str(i+1)] = data
+
         buf = unquote(''.join(parts))
         meta = literal_eval('{ %s }' % buf)
 
@@ -776,7 +786,7 @@ class Backend(AbstractBackend, metaclass=ABCDocstMeta):
         if md5 != resp.headers.get('%smeta-md5' % self.hdr_prefix, None):
             log.warning('MD5 mismatch in metadata for %s', obj_key)
             raise BadDigestError('BadDigest', 'Meta MD5 for %s does not match' % obj_key)
-
+        meta.update(metaTag)
         return meta
 
 class ObjectR(object):
