@@ -9,7 +9,7 @@ def init (param):
 def readxform_c (self,buf,param):
     arr = bytearray(buf)
     buf = bytes(arr)
-    if (self.metadata["Tag1"] == 'SECRET'):
+    if ("Tag1" in self.metadata and self.metadata["Tag1"] == 'SECRET'):
       return bytes(len(arr))
     return buf
 
