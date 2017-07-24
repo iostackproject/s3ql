@@ -49,6 +49,9 @@ Tags will be stored as Meta-Tag<index> in the metadata of each object (we look f
 client_filter_compression "on" or "off" to enable or disable compression.
 
 
+Controlling native compression
+=============================
+* Using the redis key client_native_compression with values : zlib, lzma, bzip2 or none. The compression can be switched on-off by a file basis. If the key is not set, the compression uses the default parameters (lzma)
 
 ============
  About S3QL

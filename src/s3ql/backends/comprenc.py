@@ -157,7 +157,6 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
         fh = self.backend.open_read(key)
         try:
             meta_raw = fh.metadata
-            print (fh.metadata)
             (nonce, meta) = self._verify_meta(key, meta_raw)
             if nonce:
                 data_key = sha256(self.passphrase + nonce)
@@ -206,6 +205,27 @@ class ComprencBackend(AbstractBackend, metaclass=ABCDocstMeta):
 
         meta_buf = freeze_basic_mapping(metadata)
         meta_raw = dict(format_version=2)
+
+        try: # Try to read redis key for native compression
+           Config = configparser.ConfigParser()
+           Config.read("/tmp/filters.ini")
+
+           (redisip, redisport, rediskey) = Config['General']['Param'].split()
+           filterparams = {}
+           filterlist = {}
+
+           redis_host = str(redisip.lower())
+           redis_port = int(redisport)
+
+           r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
+           conf = r.get("client_native_compression")  # none, zlib, bzip2, lzma or deleted (default)
+           comp = conf.decode("utf-8")
+           if (comp == 'none'): 
+              is_compressed = None
+           else:
+              self.compression = (comp, self.compression[1])
+        except:
+           print("Default compression")
 
         if is_compressed or self.compression[0] is None:
             compr = None
@@ -704,28 +724,30 @@ class InStdOutFilter(object):
         redis_host = str(redisip.lower())
         redis_port = int(redisport)
         print (redis_host, redis_port)
-        r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
-        conf = r.get(rediskey)
-        conf = conf.decode("utf-8").split(";")
-        for linea in conf:
-            filterc = linea.split(":")
-            if (filterc[0] == "ORDER"):
-               filterorder = filterc[1].split()
-               path = filterorder[1]
-               order = filterorder[0].split(",")
-               print ("ORDER ",order, path)
-               sys.path.append(path)
+        try:
+           r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
+           conf = r.get(rediskey)
+           conf = conf.decode("utf-8").split(";")
+           for linea in conf:
+               filterc = linea.split(":")
+               if (filterc[0] == "ORDER"):
+                  filterorder = filterc[1].split()
+                  path = filterorder[1]
+                  order = filterorder[0].split(",")
+                  print ("ORDER ",order, path)
+                  sys.path.append(path)
 
-        for linea in conf:
-            filterc = linea.split(":")
-            if (filterc[0] != "ORDER"):
-               name = filterc[0]
-               filterparams[name] = filterc[1]
-               code = r.get("client_filter_"+name+"_code")
-               open(path+name+".py", 'w').write(code.decode("UTF-8"))
-               importlib.invalidate_caches()
-               filterlist[name] = importlib.import_module(name)
-
+           for linea in conf:
+               filterc = linea.split(":")
+               if (filterc[0] != "ORDER"):
+                  name = filterc[0]
+                  filterparams[name] = filterc[1]
+                  code = r.get("client_filter_"+name+"_code")
+                  open(path+name+".py", 'w').write(code.decode("UTF-8"))
+                  importlib.invalidate_caches()
+                  filterlist[name] = importlib.import_module(name)
+        except:
+           print ("Redis or redis keys are not configured correctly")
 
         return (order,filterlist,filterparams)
 
@@ -800,28 +822,31 @@ class InFilterOutStd(InputFilter):
 
         redis_host = str(redisip.lower())
         redis_port = int(redisport)
-        r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
-        conf = r.get(rediskey)
-        conf = conf.decode("utf-8").split(";")
-        for linea in conf:
-            filterc = linea.split(":")
-            if (filterc[0] == "ORDER"):
-               filterorder = filterc[1].split()
-               path = filterorder[1]
-               order = filterorder[0].split(",")
-               print ("ORDER ",filterorder, path)
-               sys.path.append(path)
-            
-            for linea in conf:
+
+        try:
+           r = redis.Redis(connection_pool=redis.ConnectionPool(host=redis_host, port=redis_port, db=0))
+           conf = r.get(rediskey)
+           conf = conf.decode("utf-8").split(";")
+           for linea in conf:
+               filterc = linea.split(":")
+               if (filterc[0] == "ORDER"):
+                  filterorder = filterc[1].split()
+                  path = filterorder[1]
+                  order = filterorder[0].split(",")
+                  print ("ORDER ",order, path)
+                  sys.path.append(path)
+
+           for linea in conf:
                filterc = linea.split(":")
                if (filterc[0] != "ORDER"):
                   name = filterc[0]
                   filterparams[name] = filterc[1]
                   code = r.get("client_filter_"+name+"_code")
-                  open("/tmp/"+name+".py", 'w').write(code.decode("UTF-8"))
+                  open(path+name+".py", 'w').write(code.decode("UTF-8"))
                   importlib.invalidate_caches()
                   filterlist[name] = importlib.import_module(name)
-
+        except:
+           print ("Redis or redis keys are not configured correctly")
 
         return (order,filterlist,filterparams)
 
